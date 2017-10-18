@@ -43,7 +43,7 @@ class EchoStateRNNCell(rnn_cell_impl.RNNCell):
             num_units: int, The number of units in the RNN cell.
             decay: float, Decay of the ODE of each unit. Default: 0.1.
             epsilon: float, Discount from spectral radius 1. Default: 1e-10.
-            alpha: float, the proporsion of infinitesimal expansion vs infinitesimal rotation
+            alpha: float [0,1], the proporsion of infinitesimal expansion vs infinitesimal rotation
                 of the dynamical system defined by the inner weights
             sparseness: float [0,1], sparseness of the inner weight matrix. Default: 0.
             rng: np.random.RandomState, random number generator. Default: None.
@@ -70,7 +70,6 @@ class EchoStateRNNCell(rnn_cell_impl.RNNCell):
             self.rng = np.random.RandomState()
         
         # build initializers for tensorflow variables
-        
         self.W = vs.get_variable('W',initializer = self.buildInputWeigthsInitializer())
         self.U = vs.get_variable('U', initializer = self.buildEchoStateWeightsInitializer())
             
@@ -83,8 +82,9 @@ class EchoStateRNNCell(rnn_cell_impl.RNNCell):
         return self._num_units
 
     def call(self, inputs, state):
-        """ Echo-state RNN: output = new_state = state + 
-            decay*(W * input + U * act(state) - state). """
+        """ Echo-state RNN: 
+            x = x + h*(W*inp + U*f(x) - x). 
+        """
         
         new_state = state + self.decay*(
             tf.multiply(inputs, self.W) +
@@ -98,27 +98,30 @@ class EchoStateRNNCell(rnn_cell_impl.RNNCell):
             
             Returns:
             
-            A 2-D tensor as the representing the 
-            inner weights for a ESN
+            A 1-D tensor representing the 
+            input weights to an ESN
             
         """  
         # Input weight tensor initializer
         return self.rng.randn(self._num_units).astype("float32") 
         
     def buildEchoStateWeightsInitializer(self):
-        """
-        Build the inner weight matrix initialixer W = u_init so that  
+        """Build the inner weight matrix initialixer W = u_init so that  
         
-        1 - epsilon < rho(W)  < 1,
+            1 - epsilon < rho(W)  < 1,
         
-        where 
+            where 
         
-        Wd = decay * W + (1 - decay) * I. 
+            Wd = decay * W + (1 - decay) * I. 
         
-        See Proposition 2 in Jaeger et al. (2007) http://goo.gl/bqGAJu.
-        
-        Returns:
-        
+            See Proposition 2 in Jaeger et al. (2007) http://goo.gl/bqGAJu.
+            See also https://goo.gl/U6ALDd. 
+
+            Returns:
+
+                A 2-D tensor representing the 
+                inner weights of an ESN
+             
         """
          
         # Inner weight tensor initializer
