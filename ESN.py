@@ -84,7 +84,8 @@ class EchoStateRNNCell(rnn_cell_impl.RNNCell):
         # alpha and rho default as tf non trainables  
         self.optimize_table = {"alpha": False, 
                                "rho": False, 
-                               "decay": False}
+                               "decay": False,
+                               "sw": False}
         
         if self.optimize == True:
             # Set tf trainables  
