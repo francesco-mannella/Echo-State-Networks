@@ -92,15 +92,23 @@ class EchoStateRNNCell(rnn_cell_impl.RNNCell):
             for var in ["alpha", "rho", "decay", "sw" ]:
                 if var in optimize_vars or optimize_vars is None:
                     self.optimize_table[var] = True
-                
+        
+        # leaky decay
         self.decay = tf.get_variable('decay', initializer = decay, 
                                      trainable = self.optimize_table["decay"])
+        # parameter for dynamic rotation/translation (0.5 means no modifications)
         self.alpha = tf.get_variable('alpha', initializer = alpha, 
                                      trainable = self.optimize_table["alpha"])
-        self.rho = tf.get_variable('Rho', initializer = 0.5 if self.optimize_table["rho"] 
+        # the scale factor of the unitary spectral radius (default to no scaling)
+        self.rho = tf.get_variable('Rho', initializer = 1.0 if self.optimize_table["rho"] 
                                    else 1 - self.epsilon, trainable = self.optimize_table["rho"]) 
+        # the scale factor of the input weights (default to no scaling) 
         self.sw = tf.get_variable('sw', initializer = 1.0 if self.optimize_table["sw"] 
                                    else 1 - self.epsilon, trainable = self.optimize_table["sw"])     
+       
+        # builds the inner-weights matrix U
+        # and finds the rho_one value that scales U 
+        # so that 1 - epsilon < rho(decay*U + (1 -decay)*I)  < 1 
         self.setEchoStateProperty()
  
     @property
@@ -117,11 +125,11 @@ class EchoStateRNNCell(rnn_cell_impl.RNNCell):
         """
         
         new_state = state + self.decay*(
-                self._activation(
+                self.activation(
                     tf.matmul(inputs, self.W * self.sw) +
-                    tf.matmul(self._activation(state), self.U * self.rho_one * self.rho) 
-                )
-            - state)
+                    tf.matmul(self._activation(state), self.U * self.rho_one * self.rho)      
+                    )
+                - state)
         
 
         output = self._activation(new_state)
