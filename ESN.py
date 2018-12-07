@@ -125,7 +125,7 @@ class EchoStateRNNCell(rnn_cell_impl.RNNCell):
         """
         
         new_state = state + self.decay*(
-                self.activation(
+                self._activation(
                     tf.matmul(inputs, self.W * self.sw) +
                     tf.matmul(self._activation(state), self.U * self.rho_one * self.rho)      
                     )
