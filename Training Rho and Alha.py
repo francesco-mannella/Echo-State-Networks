@@ -7,7 +7,9 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-get_ipython().run_line_magic('matplotlib', 'inline')
+import matplotlib
+matplotlib.use("Agg")
+
 import sys
 import numpy as np
 import tensorflow as tf
@@ -54,11 +56,16 @@ def mult_sines(stime = 1200):
     
     return res
 
+def MSE(P, Y):
+    return tf.reduce_mean(tf.squared_difference(P, Y)) 
+
+  
+def MSE(P, Y):
+    return tf.reduce_mean(tf.squared_difference(P, Y)) 
+
 def NRMSE(P, Y):
-    return tf.sqrt(tf.reduce_mean(tf.squared_difference(P, Y))) / (tf.reduce_max(Y) - tf.reduce_min(Y))
-    
-
-
+    return tf.sqrt( MSE(P, Y)) / (tf.reduce_max(Y) - tf.reduce_min(Y))
+   
 # In[ ]:
 
 
@@ -143,7 +150,7 @@ with graph.as_default() as g:
     end = stime
     
     # optimize also lambda
-    lmb = tf.get_variable("lmb", initializer=0.08, 
+    lmb = tf.get_variable("lmb", initializer=0.0995, 
                           dtype=tf.float32, trainable=True)
     
     output_slice = outputs[begin:end,:]
@@ -163,7 +170,9 @@ with graph.as_default() as g:
     # train graph
     print("Making training graph ...")    
     # calculate the loss over all the timeseries (escluded the beginning
-    loss = NRMSE(target[begin:end,:], readouts[begin:end,:]) 
+    
+    nrmse = NRMSE(target[begin:end,:], readouts[begin:end,:]) 
+    loss = MSE(target[begin:end,:], readouts[begin:end,:]) 
 
     try: # if optimize == True
         optimizer = tf.train.AdamOptimizer(lr)
@@ -196,23 +205,25 @@ with graph.as_default() as g:
         print("Executing the graph")
         for k in range(trials):
             
-            rho, alpha, decay, sw, U, curr_outputs, curr_readouts,curr_loss,_=                     session.run([cell.rho, cell.alpha, cell.decay, cell.sw, 
-                                 cell.U, outputs, readouts, loss, train ], 
+            rho, alpha, decay, sw, U, curr_outputs, curr_readouts,curr_loss,curr_nrmse,_= \
+                    session.run([cell.rho, cell.alpha, cell.decay, cell.sw, 
+                                 cell.U, outputs, readouts, loss, nrmse, train ], 
                                 feed_dict={inputs:rnn_inputs, target: rnn_target,
                                            init_state:rnn_init_state})
+            
             
             session.run(clip)
             
             if k%200 == 0 or k == trials-1:
                 sys.stdout.write("step: {:4d}\t".format(k))
-                sys.stdout.write("NRMSE: {:5.3f}\t".format(curr_loss))
+                sys.stdout.write("NRMSE: {:5.3f}\t".format(curr_nrmse))
                 sys.stdout.write("rho: {:5.3f}\t".format(rho))
                 sys.stdout.write("alpha: {:5.3f}\t".format(alpha))
                 sys.stdout.write("decay: {:5.3f}\t".format(decay))
                 sys.stdout.write("sw: {:5.3f}\t".format(sw))
                 sys.stdout.write("lmb: {:5.3f}\n".format(lmb.eval()))
 
-            losses[k] = curr_loss
+            losses[k] = curr_nrmse
         print("Done")
 
 
