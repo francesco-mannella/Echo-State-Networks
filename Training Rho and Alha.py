@@ -7,9 +7,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-import matplotlib
-matplotlib.use("Agg")
-
 import sys
 import numpy as np
 import tensorflow as tf
@@ -59,13 +56,15 @@ def mult_sines(stime = 1200):
 def MSE(P, Y):
     return tf.reduce_mean(tf.squared_difference(P, Y)) 
 
-  
-def MSE(P, Y):
-    return tf.reduce_mean(tf.squared_difference(P, Y)) 
-
 def NRMSE(P, Y):
     return tf.sqrt( MSE(P, Y)) / (tf.reduce_max(Y) - tf.reduce_min(Y))
    
+def ridge_regression(X, Y, num_units, lmb):
+    return tf.matmul( tf.matrix_inverse(
+        tf.matmul(tf.transpose(X), X) + lmb*tf.eye(num_units)),
+              tf.matmul(tf.transpose(X), Y))
+
+
 # In[ ]:
 
 
@@ -75,6 +74,10 @@ batches = 1
 stime = 700
 num_units = 20
 num_inputs = 1
+lr = 0.0001
+lmb_init = 0.0995
+timewindow_begin = 50
+timewindow_end = stime
 
 # the activation function of the ESN
 out_function = lambda x:  math_ops.tanh(x)
@@ -107,22 +110,11 @@ targ_line, = plt.plot(rnn_target)
 
 
 # tensorflow graph -------------------------------------------------------------
+  
+def initialize_ESN(num_units, out_function, rng, decay=0.15, 
+                    alpha=0.5, optimize=True):
 
-tf.reset_default_graph()
 
-graph = tf.Graph()
-with graph.as_default() as g:
-    
-    rng = np.random.RandomState(random_seed)
-    lr = 0.0001
-    
-    # Build the graph
-    
-    inputs = tf.placeholder(tf.float32, [batches, stime, num_inputs])
-    target = tf.placeholder(tf.float32, [stime, 1])
-    init_state = tf.placeholder(tf.float32, [1, num_units])
-
-    # Init the ESN cell
     print("Making ESN init graph ...")
     cell = EchoStateRNNCell(num_units=num_units, 
                             activation=out_function, 
@@ -132,8 +124,9 @@ with graph.as_default() as g:
                             optimize=True,
                             optimize_vars=["rho", "decay","alpha", "sw"])
     print("Done")
+    return cell
     
-    # cell spreading of activations
+def ESN_activation(cell, init_state, stime, num_units):
     print("Making ESN spreading graph ...")
     states = []
     state = init_state
@@ -142,54 +135,85 @@ with graph.as_default() as g:
         states.append(state)
     outputs = tf.reshape(states, [stime, num_units])   
     print ("Done")
+    return outputs
 
-    # ridge regression
-    print("Making regression graph ...")
+def do_regression(output_slice, target_slice, num_units, lmb):
     # do the regression on a training subset of the timeseries
-    begin =  50
-    end = stime
-    
-    # optimize also lambda
-    lmb = tf.get_variable("lmb", initializer=0.0995, 
-                          dtype=tf.float32, trainable=True)
-    
-    output_slice = outputs[begin:end,:]
-
-    Wout = tf.matmul( 
-            tf.matrix_inverse(
-                tf.matmul(tf.transpose(output_slice), output_slice) +
-                lmb*tf.eye(num_units)),
-            tf.matmul(tf.transpose(output_slice), target[begin:end,:]) )
+    print("Making regression graph ...")       
+    readout_weights = ridge_regression(output_slice, target_slice,
+                                       num_units, lmb)
     print("Done")
+    return readout_weights
 
-    # readout
+
+def readout_activation(outputs, readout_weights):   
     print("Making readout spreading graph ...")
-    readouts = tf.matmul(outputs, Wout)
-    print("Done")
+    readouts = tf.matmul(outputs, readout_weights)
+    print("Done") 
+    return readouts
     
-    # train graph
+    
+def training(target_slice, readouts_slice, cell, lr, optimize_alpha=True):
     print("Making training graph ...")    
     # calculate the loss over all the timeseries (escluded the beginning
-    
-    nrmse = NRMSE(target[begin:end,:], readouts[begin:end,:]) 
-    loss = MSE(target[begin:end,:], readouts[begin:end,:]) 
+    nrmse = NRMSE(target_slice, readouts_slice) 
+    loss = MSE(target_slice, readouts_slice) 
 
     try: # if optimize == True
+        var_list = [cell.rho, cell.decay, cell.sw, lmb]
+        if optimize_alpha :
+            var_list.append(cell.alpha)
         optimizer = tf.train.AdamOptimizer(lr)
-        train = optimizer.minimize(loss, var_list=[
-            cell.rho, cell.alpha, cell.decay, cell.sw, lmb])
-        
-        # clip values
-        clip_rho = cell.rho.assign(tf.clip_by_value(cell.rho, 0.8, 5.0))
-        clip_alpha = cell.alpha.assign(tf.clip_by_value(cell.alpha, 0.0, 1.0))
-        clip_decay = cell.decay.assign(tf.clip_by_value(cell.decay, 0.1, 0.25))
-        clip_sw = cell.sw.assign(tf.clip_by_value(cell.sw, 0.0001, 10.0))
-        clip_lmb = lmb.assign(tf.clip_by_value(lmb, 0.0005, 0.2))
-        clip = tf.group(clip_rho, clip_alpha, clip_decay, clip_sw, clip_lmb)
+        train = optimizer.minimize(loss, var_list=var_list)
         
     except ValueError: # if optimize == False
         train = tf.get_variable("trial", (), dtype=None)
     print("Done")    
+        
+    return nrmse, loss, train
+    
+def clipping(cell):
+    # clip values
+    clip_rho = cell.rho.assign(tf.clip_by_value(cell.rho, 0.8, 5.0))
+    clip_alpha = cell.alpha.assign(tf.clip_by_value(cell.alpha, 0.0, 1.0))
+    clip_decay = cell.decay.assign(tf.clip_by_value(cell.decay, 0.1, 0.25))
+    clip_sw = cell.sw.assign(tf.clip_by_value(cell.sw, 0.0001, 10.0))
+    clip_lmb = lmb.assign(tf.clip_by_value(lmb, 0.001, 0.2))
+    clip = tf.group(clip_rho, clip_alpha, clip_decay, clip_sw, clip_lmb)   
+    return clip
+
+def make_graph(num_units, out_function, init_state, stime, lmb, lr):
+    cell = initialize_ESN(num_units, out_function, rng)
+    outputs = ESN_activation(cell, init_state, stime, num_units)  
+    output_slice = outputs[timewindow_begin:timewindow_end,:]
+    target_slice = target[timewindow_begin:timewindow_end,:]
+    readout_weights = do_regression(output_slice, target_slice, num_units, lmb)
+    readouts = readout_activation(outputs, readout_weights)
+    readoutputs_slice = readouts[timewindow_begin:timewindow_end,:]
+    nrmse, loss, train = training(target_slice, readoutputs_slice, cell, lr)
+    clip = clipping(cell)
+    return cell, outputs, readouts, nrmse, loss, train, clip
+
+
+# In[ ]:
+
+
+tf.reset_default_graph()
+
+graph = tf.Graph()
+with graph.as_default() as g:
+          
+    # Build the graph
+    inputs = tf.placeholder(tf.float32, [batches, stime, num_inputs])
+    target = tf.placeholder(tf.float32, [stime, 1])
+    init_state = tf.placeholder(tf.float32, [1, num_units])   
+    lmb = tf.get_variable("lmb", initializer=lmb_init, 
+                          dtype=tf.float32, trainable=True)
+    
+
+    cell, outputs, readouts, nrmse, loss, train, clip = make_graph(
+        num_units, out_function, init_state, stime, lmb, lr)
+    
 
 
 # In[ ]:
@@ -205,16 +229,14 @@ with graph.as_default() as g:
         print("Executing the graph")
         for k in range(trials):
             
-            rho, alpha, decay, sw, U, curr_outputs, curr_readouts,curr_loss,curr_nrmse,_= \
-                    session.run([cell.rho, cell.alpha, cell.decay, cell.sw, 
+            rho, alpha, decay, sw, U, curr_outputs, curr_readouts,curr_loss,curr_nrmse,_=                     session.run([cell.rho, cell.alpha, cell.decay, cell.sw, 
                                  cell.U, outputs, readouts, loss, nrmse, train ], 
                                 feed_dict={inputs:rnn_inputs, target: rnn_target,
                                            init_state:rnn_init_state})
             
-            
             session.run(clip)
             
-            if k%200 == 0 or k == trials-1:
+            if k%2000 == 0 or k == trials-1:
                 sys.stdout.write("step: {:4d}\t".format(k))
                 sys.stdout.write("NRMSE: {:5.3f}\t".format(curr_nrmse))
                 sys.stdout.write("rho: {:5.3f}\t".format(rho))
@@ -250,4 +272,10 @@ plt.xlim([-10, stime+10])
 plt.subplot(414)
 plt.plot(losses)
 plt.show()
+
+
+# In[ ]:
+
+
+
 
