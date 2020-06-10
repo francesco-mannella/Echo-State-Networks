@@ -57,7 +57,7 @@ def mult_sines(stime=1200):
 
 
 class EchoStateOptimizer(keras.models.Model):
-    def __init__(self, units, input_size, target, lmb=0.02, out_function,
+    def __init__(self, units, input_size, target, lmb=0.02, out_function=tf.tanh,
                  *args, **kargs):
         super(EchoStateOptimizer, self).__init__(*args, **kargs)
 
