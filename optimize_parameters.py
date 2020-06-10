@@ -14,17 +14,15 @@
 # ==============================================================================
 
 from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from ESN import EchoStateRNNCell
 import matplotlib.pyplot as plt
 import tensorflow.keras as keras
 import tensorflow as tf
 import numpy as np
 import sys
-from __future__ import division
-from __future__ import print_function
-
-import matplotlib
-matplotlib.use('Agg')
 
 
 # Configs ----------------------------------------------------------------------
