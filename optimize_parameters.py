@@ -24,7 +24,6 @@ import tensorflow as tf
 import numpy as np
 import sys
 
-
 # Configs ----------------------------------------------------------------------
 
 # random numbers
@@ -54,16 +53,18 @@ def mult_sines(stime=1200):
 
     return res
 
-
 # tensorflow model -------------------------------------------------------------
 
+
 class EchoStateOptimizer(keras.models.Model):
-    def __init__(self, units, input_size, target, lmb=0.02, *args, **kargs):
+    def __init__(self, units, input_size, target, lmb=0.02, out_function,
+                 *args, **kargs):
         super(EchoStateOptimizer, self).__init__(*args, **kargs)
 
         self.cell = EchoStateRNNCell(units=units, activation=out_function,
-                                     epsilon=0.08, decay=0.000001, alpha=0.5, optimize=True,
-                                     optimize_vars=["rho", "decay", "alpha", "sw"])
+                                     epsilon=0.08, decay=0.000001, alpha=0.5,
+                                     optimize=True, optimize_vars=["rho", "decay",
+                                                                   "alpha", "sw"])
 
         self.nn_layer = keras.layers.RNN(self.cell, return_sequences=True)
 
@@ -129,7 +130,9 @@ def optimize():
 
     data = {name: np.zeros(epochs) for name in ['loss', 'alpha', 'decay', 'rho', 'sw']}
 
-    regression_model = EchoStateOptimizer(units=30, input_size=1, target=targets)
+    regression_model = EchoStateOptimizer(units=30, input_size=1,
+                                          out_function=out_function,
+                                          target=targets)
     optimizer = tf.optimizers.Adam(learning_rate=0.02)
     regression_model.compile(optimizer=optimizer, loss='mse')
 
