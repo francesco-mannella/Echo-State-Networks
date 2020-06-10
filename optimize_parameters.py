@@ -180,10 +180,15 @@ def optimize():
     ax1.plot(data['loss'])
 
     ax2 = fig.add_subplot(212)
-    p_alpha, = ax2.plot(data['alpha']/data['alpha'].max())
-    p_decay, = ax2.plot(data['decay']/data['decay'].max())
-    p_rho, = ax2.plot(data['rho']/data['rho'].max())
-    p_sw, = ax2.plot(data['sw']/data['sw'].max())
+
+    def rescale(x):
+        xs = x - x.min()
+        xs /= xs.max()
+
+    p_alpha, = ax2.plot(rescale(data['alpha']))
+    p_decay, = ax2.plot(rescale(data['decay']))
+    p_rho, = ax2.plot(rescale(data['rho']))
+    p_sw, = ax2.plot(rescale(data['sw']))
 
     ax2.set_xlim([-10, 80])
     ax2.set_xticks(np.arange(0, 60, 10))
