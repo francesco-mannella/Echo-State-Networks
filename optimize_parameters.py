@@ -146,7 +146,7 @@ def optimize():
         regression_model.cell.decay.assign(tf.clip_by_value(
             regression_model.cell.decay, 0.0001, 0.25))
         regression_model.cell.alpha.assign(tf.clip_by_value(
-            regression_model.cell.alpha, 0.01, 0.99))
+            regression_model.cell.alpha, 0.05, 0.95))
         regression_model.cell.rho.assign(tf.clip_by_value(
             regression_model.cell.rho, 0.5, 50.0))
         regression_model.cell.sw.assign(tf.clip_by_value(
