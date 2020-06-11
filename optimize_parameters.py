@@ -118,6 +118,7 @@ def optimize():
     inputs = wave[5:].reshape(1, stime, input_size) * np.ones([20, stime, input_size])
     inputs = inputs.astype("float32")
     targets = rnn_target.reshape(1, stime, 1) * np.ones([20, stime, 1])
+    targets = targets.astype("float32")
 
     # model compile ------------------------------------------------------------
 
