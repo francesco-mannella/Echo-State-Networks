@@ -14,11 +14,12 @@
 # ==============================================================================
 
 from __future__ import absolute_import
-from matplotlib import rc
 from __future__ import division
 from __future__ import print_function
 
+from matplotlib import rc
 from ESN import EchoStateRNNCell
+
 import matplotlib.pyplot as plt
 import tensorflow.keras as keras
 import tensorflow as tf
