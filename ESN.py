@@ -64,7 +64,7 @@ class EchoStateRNNCell(keras.layers.Layer):
         self.optimize = optimize
         self.optimize_vars = optimize_vars
 
-        super(EchoStateRNNCell, self).__init__(autocast=False, **kwargs)
+        super(EchoStateRNNCell, self).__init__(*args, **kwargs)
 
     def build(self, input_shape):
 
