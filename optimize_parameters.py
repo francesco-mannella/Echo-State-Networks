@@ -180,10 +180,20 @@ def optimize():
     plt.subplot(212)
     inp_line, = plt.plot(rnn_input_size[0, :, :])
     targ_line, = plt.plot(rnn_target)
-    fig = plt.figure()
+
+    fig = plt.figure(figsize=(12, 8))
+    plt.rcParams.update({'font.size': 22})
 
     ax1 = fig.add_subplot(211)
-    ax1.plot(data['loss'])
+    loss, = ax1.plot(np.log10(data['loss']), lw=3)
+    ax1.set_xlim([-10, epochs*1.5])
+    ax1.set_xticks(np.arange(0, epochs*1.5, 10))
+    ax1.set_xticklabels(np.arange(0, epochs*1.05, 10))
+    yticks = ax1.get_yticks()
+    ax1.get_yticklabels(["$10^{%3.2f}$" % y for y in yticks])
+    ax1.set_xticklabels(np.arange(0, epochs*1.05, 10))
+
+    ax1.legend([loss], ['log10 loss'])
 
     ax2 = fig.add_subplot(212)
 
@@ -192,15 +202,16 @@ def optimize():
         xs /= xs.max()
         return xs
 
-    p_alpha, = ax2.plot(rescale(data['alpha']))
-    p_decay, = ax2.plot(rescale(data['decay']))
-    p_rho, = ax2.plot(rescale(data['rho']))
-    p_sw, = ax2.plot(rescale(data['sw']))
+    p_alpha, = ax2.plot(rescale(data['alpha']), lw=3)
+    p_decay, = ax2.plot(rescale(data['decay']), lw=3)
+    p_rho, = ax2.plot(rescale(data['rho']), lw=3)
+    p_sw, = ax2.plot(rescale(data['sw']), lw=3)
 
-    ax2.set_xlim([-10, 80])
+    ax2.set_xlim([-10, epochs*1.5])
     ax2.set_ylim([-0.1, 1.1])
-    ax2.set_xticks(np.arange(0, 60, 10))
-    ax2.set_xticklabels(np.arange(0, 60, 10))
+    ax2.set_xlim([-10, epochs*1.5])
+    ax2.set_xticks(np.arange(0, epochs*1.5, 10))
+    ax2.set_xticklabels(np.arange(0, epochs*1.05, 10))
     ax2.set_yticks([])
 
     ax2.legend([p_alpha, p_decay, p_rho, p_sw],
