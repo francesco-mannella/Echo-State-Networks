@@ -225,7 +225,7 @@ def optimize(name=""):
                ['alpha', 'decay', 'rho', 'sw'])
 
     np.save("data"+name, [data])
-    fig.savefig('loss.png')
+    fig.savefig('loss'+name+'.png')
 
 # TEST -------------------------------------------------------------------------
 
