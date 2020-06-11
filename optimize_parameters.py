@@ -95,7 +95,7 @@ class EchoStateOptimizer(keras.models.Model):
             tf.matmul(tf.transpose(X), Y))
 
 
-def optimize():
+def optimize(name=""):
 
     # Global variables --------------------------------------------------------
 
@@ -224,7 +224,7 @@ def optimize():
     ax2.legend([p_alpha, p_decay, p_rho, p_sw],
                ['alpha', 'decay', 'rho', 'sw'])
 
-    np.save("data", [data])
+    np.save("data"+name, [data])
     fig.savefig('loss.png')
 
 # TEST -------------------------------------------------------------------------
