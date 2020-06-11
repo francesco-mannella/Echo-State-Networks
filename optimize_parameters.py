@@ -190,6 +190,7 @@ def optimize():
     def rescale(x):
         xs = x - x.min()
         xs /= xs.max()
+        return xs
 
     p_alpha, = ax2.plot(rescale(data['alpha']))
     p_decay, = ax2.plot(rescale(data['decay']))
@@ -197,6 +198,7 @@ def optimize():
     p_sw, = ax2.plot(rescale(data['sw']))
 
     ax2.set_xlim([-10, 80])
+    ax2.set_xlim([-0.1, 1.1])
     ax2.set_xticks(np.arange(0, 60, 10))
     ax2.set_xticklabels(np.arange(0, 60, 10))
     ax2.set_yticks([])
