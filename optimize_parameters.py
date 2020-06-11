@@ -59,7 +59,7 @@ def mult_sines(stime=1200):
 class EchoStateOptimizer(keras.models.Model):
     def __init__(self, units, input_size, target, lmb=0.02, out_function=tf.tanh,
                  *args, **kargs):
-        super(EchoStateOptimizer, self).__init__(autocast=False, *args, **kargs)
+        super(EchoStateOptimizer, self).__init__(*args, **kargs)
 
         self.cell = EchoStateRNNCell(units=units, activation=out_function,
                                      epsilon=0.08, decay=0.000001, alpha=0.5,
