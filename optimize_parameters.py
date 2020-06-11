@@ -90,7 +90,7 @@ class EchoStateOptimizer(keras.models.Model):
 
 def optimize():
 
-    # Global variables --------------------------------------------------------------
+    # Global variables --------------------------------------------------------
 
     epochs = 50
     batches = 1
@@ -105,28 +105,21 @@ def optimize():
     # the activation function of the ESN
     out_function = tf.tanh
 
-    # input -------------------------------------------------------------------------
-
-    plt.figure(figsize=(12, 8))
+    # input -------------------------------------------------------------------
 
     rnn_input_size = np.zeros((batches, stime, input_size), dtype="float32")
     wave = mult_sines(stime+5).astype("float32")
     rnn_input_size = wave[5:].reshape(1, stime, 1)
     rnn_init_state = np.zeros([batches, units], dtype="float32")
 
-    plt.subplot(211)
-    wave_line, = plt.plot(wave)
-
-    plt.subplot(212)
     rnn_target = wave[:-5]
     rnn_target = rnn_target.reshape(stime, 1).astype("float32")
-    inp_line, = plt.plot(rnn_input_size[0, :, :])
-    targ_line, = plt.plot(rnn_target)
 
     inputs = wave[5:].reshape(1, stime, input_size) * np.ones([20, stime, input_size])
+    inputs = inputs.astype("float32")
     targets = rnn_target.reshape(1, stime, 1) * np.ones([20, stime, 1])
 
-    # model compile and fit ----------------------------------------------------------
+    # model compile ------------------------------------------------------------
 
     data = {name: np.zeros(epochs) for name in ['loss', 'alpha', 'decay', 'rho', 'sw']}
 
@@ -135,6 +128,8 @@ def optimize():
                                           target=targets)
     optimizer = tf.optimizers.Adam(learning_rate=0.02)
     regression_model.compile(optimizer=optimizer, loss='mse')
+
+    # Train --------------------------------------------------------------------
 
     for epoch in range(epochs):
         with tf.GradientTape() as tape:
@@ -174,6 +169,16 @@ def optimize():
         print('     rho: %- 6.3f ' % rho, end='')
         print('      sw: %- 6.3f ' % sw, end='\n')
 
+    # Plot graphs --------------------------------------------------------------
+
+    plt.figure(figsize=(12, 8))
+
+    plt.subplot(211)
+    wave_line, = plt.plot(wave)
+
+    plt.subplot(212)
+    inp_line, = plt.plot(rnn_input_size[0, :, :])
+    targ_line, = plt.plot(rnn_target)
     fig = plt.figure()
 
     ax1 = fig.add_subplot(211)
@@ -200,6 +205,8 @@ def optimize():
 
     np.save("data", [data])
     fig.savefig('loss.png')
+
+# TEST -------------------------------------------------------------------------
 
 
 if __name__ == "__main__":
