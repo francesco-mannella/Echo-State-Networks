@@ -14,6 +14,7 @@
 # ==============================================================================
 
 from __future__ import absolute_import
+from matplotlib import rc
 from __future__ import division
 from __future__ import print_function
 
@@ -28,6 +29,11 @@ import sys
 
 # random numbers
 random_seed = np.random.randint(1, 1e5)
+
+
+# latex for matplotlib
+rc('text', usetex=True)
+plt.rcParams.update({'text.latex.preamble': r'\usepackage{amsmath}'})
 
 # Utils ------------------------------------------------------------------------
 
