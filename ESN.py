@@ -1,4 +1,4 @@
-# Copyright 2017 Francesco Mannella (francesco.mannella@gmail.com) All Rights Reserved.
+# Copyright 2019 Francesco Mannella (francesco.mannella@gmail.com) All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this fileexcept in compliance with the License.
@@ -12,9 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Module implementing the EchoStateRNN Cell.
 
-This module provides the EchoStateRNN Cell, implementing the leaky ESN as 
+""" Module implementing the EchoStateRNN Cell.
+
+This module provides the EchoStateRNN Cell, implementing the leaky ESN as
 described in  http://goo.gl/bqGAJu.
 
 """
@@ -24,188 +25,147 @@ from __future__ import print_function
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import rnn_cell_impl
+import tensorflow.keras as keras
 
-# to pass to py_func
-def np_eigenvals(x):
-    return np.linalg.eigvals(x).astype('complex64')
 
-class EchoStateRNNCell(rnn_cell_impl.RNNCell):
+class EchoStateRNNCell(keras.layers.Layer):
     """Echo-state RNN cell.
-
     """
 
-    def __init__(self, num_units, num_inputs=1, decay=0.1, epsilon=1e-10, alpha=0.4, 
-                 sparseness=0.0, rng=None, activation=None, optimize=False, 
-                 optimize_vars=None, reuse=None):
+    def __init__(self, units, decay=0.1, alpha=0.5, rho=1.0, sw=1.0, seed=None,
+                 epsilon=None, sparseness=0.0,  activation=None, optimize=False,
+                 optimize_vars=None, *args, **kwargs):
         """
         Args:
-            num_units: int, The number of units in the RNN cell.
-            num_inputs: int, The number of input units to the RNN cell.
-            decay: float, Decay of the ODE of each unit. Default: 0.1.
-            epsilon: float, Discount from spectral radius 1. Default: 1e-10.
-            alpha: float [0,1], the proporsion of infinitesimal expansion vs infinitesimal rotation
+            units (int):  The number of units in the RNN cell.
+            decay (float): Decay of the ODE of each unit. Default: 0.1.
+            seed (int): seed for random numbers. Default None.
+            epsilon (float): Discount from spectral radius 1. Default: 1e-10.
+            alpha (float): [0,1], the proporsion of infinitesimal expansion vs infinitesimal rotation
                 of the dynamical system defined by the inner weights
-            sparseness: float [0,1], sparseness of the inner weight matrix. Default: 0.
-            rng: np.random.RandomState, random number generator. Default: None.
-            activation: Nonlinearity to use.  Default: `tanh`.
-            optimize: Python boolean describing whether to optimize rho and alpha. 
-            optimize_vars: list containing variables to be optimized
-            reuse: (optional) Python boolean describing whether to reuse 
-                variables in an existing scope. If not `True`, and 
-                the existing scope already has the given variables, 
-                an error is raised.
+            sparseness (float): [0,1], sparseness of the inner weight matrix. Default: 0.
+            rho (float): the scale of internal weights
+            sw (float): the scale of input weights
+            activation (callable): Nonlinearity to use.  Default: `tanh`.
+            optimize (bool): whether to optimize variables (see optimize_Vars)
+            optimize_vars (list): variables to be optimize ( default None -- all variable are trainable).
         """
 
-        # Basic RNNCell initialization
-        super(EchoStateRNNCell, self).__init__()
-        self._num_units = num_units
-        self._activation = activation or math_ops.tanh
-        self._reuse = reuse
-        self.num_inputs = num_inputs
-        self.epsilon = epsilon
+        self.seed = seed
+        self.units = units
+        self.state_size = units
         self.sparseness = sparseness
+        self.decay_ = decay
+        self.alpha_ = alpha
+        self.rho_ = rho
+        self.sw_ = sw
+        self.epsilon = epsilon
+        self._activation = tf.tanh if activation is None else activation
         self.optimize = optimize
-        
-        # Random number generator initialization
-        self.rng = rng
-        if rng is None:
-            self.rng = np.random.RandomState()
-        
-        # build initializers for tensorflow variables 
-        self.w = self.buildInputWeights()
-        self.u = self.buildEchoStateWeights()
-        
-        self.W = tf.get_variable('W',initializer = self.w, trainable = False)   
-        self.U = tf.get_variable('U', initializer = self.u, trainable = False)
+        self.optimize_vars = optimize_vars
 
-        # alpha and rho default as tf non trainables  
-        self.optimize_table = {"alpha": False, 
-                               "rho": False, 
+        super(EchoStateRNNCell, self).__init__(*args, **kwargs)
+
+    def build(self, input_shape):
+
+        # alpha and rho default as tf non trainables
+        self.optimize_table = {"alpha": False,
+                               "rho": False,
                                "decay": False,
                                "sw": False}
-        
+
         if self.optimize == True:
-            # Set tf trainables  
-            for var in ["alpha", "rho", "decay", "sw" ]:
-                if var in optimize_vars or optimize_vars is None:
+            # Set tf trainables
+            for var in ["alpha", "rho", "decay", "sw"]:
+                if var in self.optimize_vars:
                     self.optimize_table[var] = True
-        
+                else:
+                    self.optimize_table[var] = False
+
         # leaky decay
-        self.decay = tf.get_variable('decay', initializer = decay, 
-                                     trainable = self.optimize_table["decay"])
+        self.decay = tf.Variable(self.decay_, name="decay",
+                                 dtype=tf.float32,
+                                 trainable=self.optimize_table["decay"])
         # parameter for dynamic rotation/translation (0.5 means no modifications)
-        self.alpha = tf.get_variable('alpha', initializer = alpha, 
-                                     trainable = self.optimize_table["alpha"])
-        # the scale factor of the unitary spectral radius (default to no scaling)
-        self.rho = tf.get_variable('Rho', initializer = 1.0 if self.optimize_table["rho"] 
-                                   else 1 - self.epsilon, trainable = self.optimize_table["rho"]) 
-        # the scale factor of the input weights (default to no scaling) 
-        self.sw = tf.get_variable('sw', initializer = 1.0 if self.optimize_table["sw"] 
-                                   else 1 - self.epsilon, trainable = self.optimize_table["sw"])     
+        self.alpha = tf.Variable(self.alpha_, name="alpha",
+                                 dtype=tf.float32,
+                                 trainable=self.optimize_table["alpha"])
+
+        # the scale factor of the unitary spectral radius
+        self.rho = tf.Variable(self.rho_, name="rho",
+                               dtype=tf.float32,
+                               trainable=self.optimize_table["rho"])
+
+        # the scale factor of the input weights
+        self.sw = tf.Variable(self.sw_, name="sw",
+                              dtype=tf.float32,
+                              trainable=self.optimize_table["sw"])
+        
+        self.alpha_store = tf.Variable(self.alpha_, name="alpha_store",
+                             dtype=tf.float32, trainable=False) 
+        
+        self.echo_ratio = tf.Variable(1, name="echo_ratio",
+                             dtype=tf.float32, trainable=False) 
+                
+        self.kernel = self.add_weight(
+            shape=(input_shape[-1], self.units),
+            initializer=keras.initializers.RandomUniform(-1, 1, seed=self.seed),
+            name="kernel", trainable=False)
+
+        self.recurrent_kernel_init = self.add_weight(
+            shape=(self.units, self.units),
+            initializer=keras.initializers.RandomNormal(seed=self.seed),
+            name="recurrent_kernel", trainable=False)
        
-        # builds the inner-weights matrix U
-        # and finds the rho_one value that scales U 
-        # so that 1 - epsilon < rho(decay*U + (1 -decay)*I)  < 1 
-        self.setEchoStateProperty()
- 
-    @property
-    def state_size(self):
-        return self._num_units
-
-    @property
-    def output_size(self):
-        return self._num_units
-
-    def call(self, inputs, state):
-        """ Echo-state RNN: 
-            x = x + h*(f(W*inp + U*g(x)) - x). 
-        """
-        
-        new_state = state + self.decay*(
-                self._activation(
-                    tf.matmul(inputs, self.W * self.sw) +
-                    tf.matmul(self._activation(state), self.U * self.rho_one * self.rho)      
-                    )
-                - state)
-        
-
-        output = self._activation(new_state)
-
-        return output, new_state   
-         
-    def setEchoStateProperty(self):
-        """ optimize U to obtain alpha-imporooved echo-state property """
-
-        self.U = self.set_alpha(self.U)
-        self.U = self.normalizeEchoStateWeights(self.U)
-        self.rho_one = self.buildEchoStateRho(self.U) 
- 
-    def set_alpha(self, W):
-        """ Decompose rotation and translation """
-
-        return 0.5*(self.alpha*(W + tf.transpose(W)) + (1 - self.alpha)*(W - tf.transpose(W)))
-        
-    def buildInputWeights(self):
-        """            
-            Returns:
-            
-            A 1-D tensor representing the 
-            input weights to an ESN    
-        """  
-
-        # Input weight tensor initializer
-        return self.rng.uniform(-1, 1, [self.num_inputs, self._num_units]).astype("float32") 
+        self.recurrent_kernel = self.add_weight(
+            shape=(self.units, self.units),
+            initializer=tf.zeros_initializer(),
+            name="recurrent_kernel", trainable=False)
     
-    def buildEchoStateWeights(self):
-        """            
-            Returns:
-            
-            A 1-D tensor representing the 
-            inner weights to an ESN (to be optimized)        
-        """    
-
-        # Inner weight tensor initializer
-        # 1) Build random matrix
-        W = self.rng.randn(self._num_units, self._num_units).astype("float32") * \
-                (self.rng.rand(self._num_units, self._num_units) < 1 - self.sparseness) 
-        return W
-    
-    def normalizeEchoStateWeights(self, W):
-        # 2) Normalize to spectral radius 1
-
-        eigvals = tf.py_func(np_eigenvals, [W], tf.complex64) 
-        W /= tf.reduce_max(tf.abs(eigvals)) 
-
-        return W
-              
-    def buildEchoStateRho(self, W):
-        """Build the inner weight matrix initialixer W  so that  
+        self.recurrent_kernel_init.assign(self.setSparseness(self.recurrent_kernel_init))
+        self.recurrent_kernel.assign(self.setAlpha(self.recurrent_kernel_init))
+        self.echo_ratio.assign(self.echoStateRatio(self.recurrent_kernel))
+        self.rho.assign(self.findEchoStateRho(self.recurrent_kernel*self.echo_ratio))
         
+        self.built = True
+
+    def setAlpha(self, W):
+        W = 0.5*(self.alpha*(W + tf.transpose(W)) + (1 - self.alpha)*(W - tf.transpose(W)))
+        return W
+
+    def setSparseness(self, W):
+        mask = tf.cast(tf.random.uniform(W.shape, seed=self.seed)
+                       < (1 - self.sparseness), dtype=W.dtype)
+        W = W * mask
+        return W
+
+    def echoStateRatio(self, W):
+        eigvals = tf.py_function(np.linalg.eigvals, [W], tf.complex64)
+        return tf.reduce_max(tf.abs(eigvals))
+
+    def findEchoStateRho(self, W):
+        """Build the inner weight matrix initialixer W  so that
+
             1 - epsilon < rho(W)  < 1,
-        
-            where 
-        
-            Wd = decay * W + (1 - decay) * I. 
-        
+
+            where
+
+            Wd = decay * W + (1 - decay) * I.
+
             See Proposition 2 in Jaeger et al. (2007) http://goo.gl/bqGAJu.
-            See also https://goo.gl/U6ALDd. 
-
+            See also https://goo.gl/U6ALDd.
             Returns:
-
-                A 2-D tensor representing the 
-                inner weights of an ESN      
+                A 2-D tensor representing the
+                inner weights of an ESN
         """
-            
-        # Correct spectral radius for leaky units. The iteration 
-        #    has to reach this value 
+
+        # Correct spectral radius for leaky units. The iteration
+        #    has to reach this value
         target = 1.0
         # spectral radius and eigenvalues
-        eigvals = tf.py_func(np_eigenvals, [W], tf.complex64) 
-        x = tf.real(eigvals) 
-        y = tf.imag(eigvals)  
+        eigvals = tf.py_function(np.linalg.eigvals, [W], tf.complex64)
+        x = tf.math.real(eigvals)
+        y = tf.math.imag(eigvals)
         # solve quadratic equations
         a = x**2 * self.decay**2 + y**2 * self.decay**2
         b = 2 * x * self.decay - 2 * x * self.decay**2
@@ -213,8 +173,80 @@ class EchoStateRNNCell(rnn_cell_impl.RNNCell):
         # just get the positive solutions
         sol = (tf.sqrt(b**2 - 4*a*c) - b)/(2*a)
         # and take the minor amongst them
-        effective_rho = tf.reduce_min(sol)
-        rho = effective_rho
-        # 4 defne the tf variable      
-
+        rho = tf.reduce_min(sol)
         return rho
+  
+    def clip_variables(self):
+        """ clip parameters having been optimized to their limits
+        """
+        self.decay.assign(tf.clip_by_value(
+            self.decay, 0.00000001, 0.25))
+        self.alpha.assign(tf.clip_by_value(
+            self.alpha, 0.000001, 0.9999999))
+        self.rho.assign(tf.clip_by_value(
+            self.rho, 0.5, 1.0e100))
+        self.sw.assign(tf.clip_by_value(
+            self.sw, 0.5, 1.0e100))
+    
+    def call(self, inputs, states):
+        """ Echo-state RNN:
+            x = x + h*(f(W*inp + U*g(x)) - x).
+        """
+        
+        rkernel = self.setAlpha(self.recurrent_kernel_init)
+        if self.alpha != self.alpha_store:
+            self.clip_variables()
+            self.echo_ratio.assign(self.echoStateRatio(rkernel))
+            self.rho.assign(self.findEchoStateRho(rkernel*self.echo_ratio)) 
+            self.alpha_store.assign(self.alpha)
+
+        ratio = self.rho*self.echo_ratio*(1 - self.epsilon)
+
+        prev_output = states[0]
+        output = prev_output + self.decay*(
+            tf.matmul(
+                inputs,
+                self.kernel * self.sw) +
+            tf.matmul(
+                self._activation(prev_output),
+                rkernel*ratio)
+            - prev_output)
+
+        return self._activation(output), [output]
+
+
+if __name__ == "__main__":
+
+    data = np.load("data.npy", allow_pickle=True)[0]
+    decay, alpha, rho, sw = (data[name][-1] for name in ['decay', 'alpha',
+                                                         'rho', 'sw'])
+
+    cell = EchoStateRNNCell(100,
+                            decay=decay,
+                            alpha=alpha,
+                            rho=rho,
+                            sw=sw,
+                            epsilon=0.08,
+                            sparseness=0,
+                            seed=None)
+    inp = keras.layers.Input([None, 1])
+    layer = keras.layers.RNN(cell, return_sequences=True, name="rnn")
+    out = layer(inp)
+
+    nn = keras.models.Model(inputs=inp, outputs=out)
+
+    inps = np.zeros([1, 2200, 1])
+    inps[0, 0, 0] = 10
+    outs = nn.predict(inps)
+
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    plt.subplot(211)
+    p = plt.plot(outs[0])
+    plt.subplot(212)
+    p = plt.imshow(outs[0].T, cmap=plt.cm.jet)
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+    plt.savefig("esn.png")
