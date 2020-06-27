@@ -10,3 +10,8 @@ The inizialization of the weights uses numpy function via [tf.py_function](https
 because tf.self_adjoint_eigvals only works on self-adjoint matrices.
  
 [ESN-usage.ipynb](ESN-usage.ipynb) Contains an example of training on a simple dataset. 
+
+[parametric-sequence-learning.ipynb](parametric-sequence-learning.ipynb) Contains a more complex example. A set of 2Dtrajectories is learned 
+and generalization to the whole family of trajectories is tested.
+
+
