@@ -86,39 +86,47 @@ class EchoStateRNNCell(keras.layers.Layer):
         self.decay = tf.Variable(self.decay_, name="decay",
                                  dtype=tf.float32,
                                  trainable=self.optimize_table["decay"])
-
         # parameter for dynamic rotation/translation (0.5 means no modifications)
         self.alpha = tf.Variable(self.alpha_, name="alpha",
                                  dtype=tf.float32,
                                  trainable=self.optimize_table["alpha"])
 
         # the scale factor of the unitary spectral radius
-        self.rho = tf.Variable(self.rho_,
+        self.rho = tf.Variable(self.rho_, name="rho",
                                dtype=tf.float32,
                                trainable=self.optimize_table["rho"])
 
         # the scale factor of the input weights
-        self.sw = tf.Variable(self.sw_,
+        self.sw = tf.Variable(self.sw_, name="sw",
                               dtype=tf.float32,
                               trainable=self.optimize_table["sw"])
-
+        
+        self.alpha_store = tf.Variable(self.alpha_, name="alpha_store",
+                             dtype=tf.float32, trainable=False) 
+        
+        self.echo_ratio = tf.Variable(1, name="echo_ratio",
+                             dtype=tf.float32, trainable=False) 
+                
         self.kernel = self.add_weight(
             shape=(input_shape[-1], self.units),
             initializer=keras.initializers.RandomUniform(-1, 1, seed=self.seed),
             name="kernel", trainable=False)
 
-        self.recurrent_kernel = self.add_weight(
+        self.recurrent_kernel_init = self.add_weight(
             shape=(self.units, self.units),
             initializer=keras.initializers.RandomNormal(seed=self.seed),
             name="recurrent_kernel", trainable=False)
-
-        self.recurrent_kernel = self.setSparseness(self.recurrent_kernel)
-
-        self.echo_ratio = self.echoStateRatio(self.recurrent_kernel)
+       
+        self.recurrent_kernel = self.add_weight(
+            shape=(self.units, self.units),
+            initializer=tf.zeros_initializer(),
+            name="recurrent_kernel", trainable=False)
+    
+        self.recurrent_kernel_init.assign(self.setSparseness(self.recurrent_kernel_init))
+        self.recurrent_kernel.assign(self.setAlpha(self.recurrent_kernel_init))
+        self.echo_ratio.assign(self.echoStateRatio(self.recurrent_kernel))
         self.rho.assign(self.findEchoStateRho(self.recurrent_kernel*self.echo_ratio))
-        if self.optimize is False:
-            self.recurrent_kernel = self.setAlpha(self.recurrent_kernel)
-
+        
         self.built = True
 
     def setAlpha(self, W):
@@ -167,15 +175,30 @@ class EchoStateRNNCell(keras.layers.Layer):
         # and take the minor amongst them
         rho = tf.reduce_min(sol)
         return rho
-
+  
+    def clip_variables(self):
+        """ clip parameters having been optimized to their limits
+        """
+        self.decay.assign(tf.clip_by_value(
+            self.decay, 0.00000001, 0.25))
+        self.alpha.assign(tf.clip_by_value(
+            self.alpha, 0.000001, 0.9999999))
+        self.rho.assign(tf.clip_by_value(
+            self.rho, 0.5, 1.0e100))
+        self.sw.assign(tf.clip_by_value(
+            self.sw, 0.5, 1.0e100))
+    
     def call(self, inputs, states):
         """ Echo-state RNN:
             x = x + h*(f(W*inp + U*g(x)) - x).
         """
-
-        rkernel = self.recurrent_kernel
-        if self.optimize is True:
-            rkernel = self.setAlpha(rkernel)
+        
+        rkernel = self.setAlpha(self.recurrent_kernel_init)
+        if self.alpha != self.alpha_store:
+            self.clip_variables()
+            self.echo_ratio.assign(self.echoStateRatio(rkernel))
+            self.rho.assign(self.findEchoStateRho(rkernel*self.echo_ratio)) 
+            self.alpha_store.assign(self.alpha)
 
         ratio = self.rho*self.echo_ratio*(1 - self.epsilon)
 
