@@ -5,13 +5,13 @@ networks together with an analytical method to correct the spectral radius of th
 accounting for leakiness and a matricial trick to improve the variance of network states 
 during its dynamics.
 
-[ESN.py](ESN.py) Contains the definition of a customized tensorflow RNNCell. 
+[ESN.py](ESN.py) Contains the definition of a customized tensorflow Cell. 
 The inizialization of the weights uses numpy function via [tf.py_function](https://www.tensorflow.org/api_docs/python/tf/py_function) 
 because tf.self_adjoint_eigvals only works on self-adjoint matrices.
  
 [ESN-usage.ipynb](ESN-usage.ipynb) Contains an example of training on a simple dataset. 
 
-[parametric-sequence-learning.ipynb](parametric-sequence-learning.ipynb) Contains a more complex example. A set of 2Dtrajectories is learned 
+[parametric-sequence-learning.ipynb](parametric-sequence-learning.ipynb) Contains a more complex example. A set of 2D trajectories is learned 
 and generalization to the whole family of trajectories is tested.
 
 
